@@ -1,0 +1,141 @@
+From hillr@bellsygma.co.uk  Wed Jul 16 10:37:31 1997
+X-Sender: hillr@sygma_euro_01
+Mime-Version: 1.0
+Content-Type: text/plain; charset="us-ascii"
+Date: Wed, 16 Jul 1997 10:02:23 +0100
+To: Tim.Bunce@ig.co.uk (Tim Bunce) (Tim Bunce)
+From: Roger Hill <hillr@bellsygma.co.uk>
+Subject: DBD and pTk
+
+Tim,
+
+This is the source of the perl scrip thtat combines pTk and DBD. The database names and passwords have been changed to protect the innocent.
+
+Roger Hill
+
+#!/usr/bin/perl -w
+#
+use DBI;  
+use pdmxdf;
+use Tk;
+use tkutils;
+
+my %address;
+
+#
+# get list of Network elements out of the database.
+#
+$drh = DBI->install_driver( 'Oracle' );
+
+$dbh = $drh->connect( 'SID', 'user', 'password' );
+
+die unless $dbh;
+
+$cursor = $dbh->prepare( "SELECT RESOURCE_NAME, ADDRESS, STATE_ID, INTERNAL_ID FROM SAMS_RESOURCE WHERE RESOURCE_TYPE = 'PDMX'" );
+
+$cursor->execute;
+
+while ( ($name, $address, $state, $a6) = $cursor->fetchrow ) {
+	$name =~ s/(.*)\-//;
+	$group = $1;
+	$name =~ s/[ 	]//g;
+	$group{$name} = $group;
+	$address =~ s/[ 	]//g;
+	$address =~ s/\[([p0-9]*)\]/\*D$1/;
+	$address{$name} = $address;
+	$state{$name} = $state;
+	$a6 =~ s/[ 	]//g;
+	$a6{$name} = $a6;
+}
+$cursor->finish;
+
+$dbh->disconnect;
+
+#
+# Create a mainwindow with a scrolling listbox to display the elements out
+# of the database.
+#
+
+my $MW = new MainWindow;
+
+my $frame = $MW->Frame->pack( -fill => 'both', -expand => 1);
+
+my $sb = $frame->Scrollbar->pack( -side => 'right',
+				-fill => 'y' );
+
+my $lb = $frame->Listbox( -yscrollcommand => [ $sb => 'set' ],
+			-font => '8x13',
+			-width => 50 )
+			->pack( -side => 'left',
+				-fill => 'both',
+				-expand => 1 );
+#
+# Insert each row taken from the daabase into the listbox. (We could do this inside
+# the loop that takes stuff out of the database, but then we would need to work out how
+# to sort the names in SQL. It's much easier to sort them in perl.
+#
+foreach $i ( sort keys %address ) {
+	$lb->insert( 'end',
+	sprintf( "%-9s %-16s %-5s %-8s %s",
+	$i, $address{$i},
+	$a6{$i},  $group{$i},
+	($state{$i} ? "ACTIVE   " : "SUSPENDED")));
+}
+#
+# Connect the scrollbar to the listbox.
+#
+$sb->configure( -command => [$lb => 'yview'] );
+#
+# Bind mouse double click to the action to be taken fo that line.
+# 
+$lb->bind( '<Double-1>' => sub{ testpdmx( $lb->get('active' ))});
+
+#
+# Add a frame at the bottom with buttons marked "Connect" and "Cancel"
+#
+my $bf = $MW->Frame->pack( -side => 'bottom', -fill => 'x');
+my $padding = [ -padx => "1m", -pady => "1m" ];
+$bf->Button( -text => "Connect",
+				-command => sub{ testpdmx( $lb->get('active' ))}
+				) ->pack( -side => 'left', @$padding );
+$bf->Button( -text => "Close",
+				-command => sub{ $MW->destroy } 
+				) ->pack( -side => 'right', @$padding );
+#
+# Disappear into guts of Tk, never to be seen again.
+#
+MainLoop;
+
+
+sub testpdmx {
+	my ($code333, $address, $a6 ) = split( /[ 	]+/, shift);
+	my $t = new MainWindow;
+	$t->Label( -text => "Contacting $code333..." )->pack( -pady => 3 );
+	$t->update;
+#
+# ... ok the rest of this probably won't do anything for you, it just does some stuff to
+#     test one of the Network Elements displayed in the list above. Comment out all
+#     PDMX stuff, put in a sleep(4) and you get some idea of how it works. 
+#
+        my $pdmx = new pdmxdf( $address, $a6, 'verbose', 0 );
+        if ( $pdmx->connect ) {
+                if ( $pdmx->{'not_dataflo'} ) {
+			$t->destroy;
+			my_dialog( "$code333 is contactable but is not running dataflo");
+                } else {
+			$t->destroy;
+			my_dialog( "$code333 is contactable and is running F/W version $pdmx->{'sw_version'} " );
+                }
+        } else {
+		if ( $pdmx->{'pad'}->connect ) {
+			$t->destroy;
+			my_dialog( "$code333 could be called over the X.25 network, but did not respond to any commands that were sent to it." );
+		} else {
+			$t->destroy;
+			my_dialog( "X.25 problem contacting $code333",
+				   @{$pdmx->{error}} );
+		}
+        }
+        $pdmx->close;
+}
+

@@ -1,0 +1,8 @@
+
+    PRODUCT COSTS
+    -------------
+
+CODE   DESCRIPTION   COST     OTHER NOTES
+----   -----------   ------   -------------------
+1201   WIDGET 37A    500.00   LEFT HANDED ONLY
+1202   BRACKET X7J   790.00   REDUCED FROM 800.00
